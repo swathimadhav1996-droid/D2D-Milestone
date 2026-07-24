@@ -7,10 +7,17 @@ completeness + a breakdown by FFW / NVOCC / Carrier, one column per milestone,
 with green/yellow/red traffic-light styling.
 
 Sidebar filters:
-  - Shipment grain (container-level / booking-level / every row)
   - Shipments to include (all rows / completed only), optional created-date range
   - Milestones to include — pick exactly which of the 24 milestones appear as
     columns in the report (Select all / Clear all shortcuts provided)
+
+Shipment identity: every row in the file is counted as its own shipment — both
+booking-level (parent) and container-level (child) rows are always combined,
+and rows are NEVER merged or dropped just because they share the same
+CONTAINER_ID or the same BOOKING_NUMBER + CONTAINER_ID pair. Container IDs get
+reused across different bookings over time, so CONTAINER_ID alone is never a
+reliable identity — the app surfaces a Booking+Container duplicate check (see
+the "Data quality check" panel) purely for visibility, it does not remove rows.
 
 Run locally:   streamlit run streamlit_app.py
 Deploy:        push this file + requirements.txt to GitHub, then deploy on
@@ -209,8 +216,9 @@ st.caption("Upload the raw shipment-level export and download the formatted comp
 
 with st.sidebar:
     st.header("Options")
-    grain = st.radio("Shipment grain (BOOKING_LEVEL)",
-                     ["Container-level only", "Booking-level only", "Every row as exported"], index=0)
+    st.caption("Every row is counted as its own shipment — booking-level and "
+               "container-level rows are always combined, and nothing is merged "
+               "or dropped for sharing a Container ID or Booking+Container pair.")
     scope = st.radio("Shipments to include",
                      ["All rows", "Completed only"], index=0)
     use_dates = st.checkbox("Filter by shipment created date", value=False)
@@ -248,13 +256,41 @@ up = st.file_uploader("Raw shipment-level file (CSV or Excel)", type=["csv", "xl
 
 if up is not None:
     df = pd.read_csv(up, dtype=str) if up.name.lower().endswith(".csv") else pd.read_excel(up, dtype=str)
-    st.write(f"Loaded **{len(df):,}** rows.")
+    st.write(f"Loaded **{len(df):,}** rows — booking-level and container-level rows combined, nothing filtered by grain.")
 
-    if "BOOKING_LEVEL" in df.columns:
-        if grain == "Container-level only":
-            df = df[df["BOOKING_LEVEL"] == "container"]
-        elif grain == "Booking-level only":
-            df = df[df["BOOKING_LEVEL"] == "booking"]
+    # ---- Data quality check: Booking + Container identity (informational only — never dedups) ----
+    if "BOOKING_NUMBER" in df.columns or "CONTAINER_ID" in df.columns:
+        bn = df["BOOKING_NUMBER"] if "BOOKING_NUMBER" in df.columns else pd.Series([pd.NA] * len(df), index=df.index)
+        cid = df["CONTAINER_ID"] if "CONTAINER_ID" in df.columns else pd.Series([pd.NA] * len(df), index=df.index)
+        shipment_key = bn.fillna("").astype(str).str.strip() + " | " + cid.fillna("").astype(str).str.strip()
+        has_key = shipment_key.str.strip(" |") != ""
+        dup_mask = shipment_key.duplicated(keep=False) & has_key
+        n_dup_rows = int(dup_mask.sum())
+        n_dup_keys = int(shipment_key[dup_mask].nunique()) if n_dup_rows else 0
+
+        with st.expander(f"Data quality check — Booking + Container identity  ({n_dup_rows:,} rows share a repeated key)"):
+            st.write(f"- Unique Booking Number + Container ID combinations: **{shipment_key[has_key].nunique():,}**")
+            st.write(f"- Rows sharing a repeated Booking+Container combination: **{n_dup_rows:,}** "
+                     f"across **{n_dup_keys:,}** distinct combinations")
+            st.write("All rows are kept exactly as loaded — nothing is merged or dropped. A Container ID reused "
+                     "under a *different* Booking Number is a different shipment (containers get reused over "
+                     "time), and even a true Booking+Container repeat is preserved as its own row.")
+            if n_dup_rows:
+                preview_cols = [c for c in ["BOOKING_NUMBER", "CONTAINER_ID", "INTERNAL_SHIPMENT_ID", "BOOKING_LEVEL"] if c in df.columns]
+                st.dataframe(df.loc[dup_mask, preview_cols].sort_values(preview_cols[:2]).head(50),
+                             use_container_width=True, hide_index=True)
+
+    # ---- Completion status (computed on the full loaded set, before the Completed-only filter) ----
+    if "SHIPMENT_COMPLETED_DT" in df.columns:
+        completed_n = int(_nonempty(df["SHIPMENT_COMPLETED_DT"]).sum())
+        total_n = len(df)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Total rows loaded", f"{total_n:,}")
+        c2.metric("Completed", f"{completed_n:,}", f"{completed_n / total_n:.0%}" if total_n else None)
+        c3.metric("Not yet completed", f"{total_n - completed_n:,}")
+        st.caption("A shipment only gets a completed date once its full door-to-door journey has finished — "
+                   "shipments created recently are expected to still show as not-yet-completed.")
+
     if scope == "Completed only" and "SHIPMENT_COMPLETED_DT" in df.columns:
         df = df[_nonempty(df["SHIPMENT_COMPLETED_DT"])]
     if use_dates and d_from and d_to and "SHIPMENT_CREATED_DT" in df.columns:
