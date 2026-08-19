@@ -7,7 +7,8 @@ completeness + a breakdown by FFW / NVOCC / Carrier, one column per milestone,
 with green/yellow/red traffic-light styling.
 
 Sidebar filters:
-  - Shipments to include (all rows / completed only), optional created-date range
+  - Shipments to include (all rows / completed only / not yet completed),
+    optional created-date range
   - Milestones to include — pick exactly which of the 24 milestones appear as
     columns in the report (Select all / Clear all shortcuts provided)
 
@@ -31,8 +32,8 @@ count x percentage, divided by SUM of count) to verify by hand.
 
 Optionally includes ONE raw-data sheet in the download, with every column from
 the uploaded file, matching whichever "Shipments to include" scope is
-selected — "Raw Data - All" when All rows is selected, or "Raw Data -
-Completed" when Completed only is selected. Never both at once.
+selected — "Raw Data - All", "Raw Data - Completed", or "Raw Data - Not Yet
+Completed". Only ever one sheet, never more than one at once.
 
 Run locally:   streamlit run streamlit_app.py
 Deploy:        push this file + requirements.txt to GitHub, then deploy on
@@ -282,7 +283,7 @@ with st.sidebar:
                "container-level rows are always combined, and nothing is merged "
                "or dropped for sharing a Container ID or Booking+Container pair.")
     scope = st.radio("Shipments to include",
-                     ["All rows", "Completed only"], index=0)
+                     ["All rows", "Completed only", "Not yet completed"], index=0)
     use_dates = st.checkbox("Filter by shipment created date", value=False)
     d_from = d_to = None
     if use_dates:
@@ -314,8 +315,8 @@ with st.sidebar:
     st.markdown("---")
     include_raw = st.checkbox("Include a raw-data sheet in the download", value=True)
     st.caption("Adds one extra tab with every column from the uploaded file, matching whichever "
-                "'Shipments to include' scope is selected above — 'Raw Data - All' when All rows is "
-                "selected, or 'Raw Data - Completed' when Completed only is selected. "
+                "'Shipments to include' scope is selected above — 'Raw Data - All', 'Raw Data - "
+                "Completed', or 'Raw Data - Not Yet Completed'. Only ever one sheet, never more. "
                 "Turn off for a smaller/faster file if you only need the summary.")
 
     st.markdown("---")
@@ -362,6 +363,8 @@ if up is not None:
 
     if scope == "Completed only" and "SHIPMENT_COMPLETED_DT" in df.columns:
         df = df[_nonempty(df["SHIPMENT_COMPLETED_DT"])]
+    elif scope == "Not yet completed" and "SHIPMENT_COMPLETED_DT" in df.columns:
+        df = df[~_nonempty(df["SHIPMENT_COMPLETED_DT"])]
     if use_dates and d_from and d_to and "SHIPMENT_CREATED_DT" in df.columns:
         cr = pd.to_datetime(df["SHIPMENT_CREATED_DT"], errors="coerce")
         df = df[(cr >= pd.Timestamp(d_from)) & (cr < pd.Timestamp(d_to) + pd.Timedelta(days=1))]
@@ -381,9 +384,13 @@ if up is not None:
         st.dataframe(ov.style.format({"Completeness": "{:.1%}"}), use_container_width=True, hide_index=True)
 
         if include_raw:
-            # df already reflects the current scope (All rows / Completed only) + date filter,
-            # so the raw sheet name simply follows the scope selection — one sheet, not both.
-            raw_sheet_name = "Raw Data - Completed" if scope == "Completed only" else "Raw Data - All"
+            # df already reflects the current scope (All rows / Completed only / Not yet completed)
+            # + date filter, so the raw sheet name simply follows the scope — one sheet, not more.
+            RAW_SHEET_NAMES = {
+                "Completed only": "Raw Data - Completed",
+                "Not yet completed": "Raw Data - Not Yet Completed",
+            }
+            raw_sheet_name = RAW_SHEET_NAMES.get(scope, "Raw Data - All")
             with st.spinner("Building workbook with raw-data sheet…"):
                 xlsx = build_full_workbook(overall, ent, fsub, N, pcols, gnames, raw_df=df, raw_sheet_name=raw_sheet_name)
             st.caption(f"Workbook includes a '{raw_sheet_name}' tab ({len(df):,} rows).")
