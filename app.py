@@ -29,9 +29,10 @@ AVERAGE() over a whole block) will double-count and will not reproduce the
 top total — weight by each row's Shipment Count instead (SUMPRODUCT of
 count x percentage, divided by SUM of count) to verify by hand.
 
-Optionally includes two raw-data sheets in the download ("Raw Data - All" and
-"Raw Data - Completed") with every column from the uploaded file, for anyone
-who wants the underlying rows alongside the summary.
+Optionally includes ONE raw-data sheet in the download, with every column from
+the uploaded file, matching whichever "Shipments to include" scope is
+selected — "Raw Data - All" when All rows is selected, or "Raw Data -
+Completed" when Completed only is selected. Never both at once.
 
 Run locally:   streamlit run streamlit_app.py
 Deploy:        push this file + requirements.txt to GitHub, then deploy on
@@ -259,17 +260,14 @@ def add_raw_sheet(wb, name: str, data: pd.DataFrame):
     return ws
 
 
-def build_full_workbook(overall, ent, fsub, N, pcols, gnames, df_all=None, df_completed=None) -> bytes:
-    """Build the Completeness Summary workbook, optionally appending raw-data sheets."""
+def build_full_workbook(overall, ent, fsub, N, pcols, gnames, raw_df=None, raw_sheet_name=None) -> bytes:
+    """Build the Completeness Summary workbook, optionally appending ONE raw-data sheet."""
     summary_bytes = build_workbook(overall, ent, fsub, N, pcols, gnames)
-    if df_all is None and df_completed is None:
+    if raw_df is None:
         return summary_bytes
     from openpyxl import load_workbook
     wb = load_workbook(io.BytesIO(summary_bytes))
-    if df_all is not None:
-        add_raw_sheet(wb, "Raw Data - All", df_all)
-    if df_completed is not None:
-        add_raw_sheet(wb, "Raw Data - Completed", df_completed)
+    add_raw_sheet(wb, raw_sheet_name or "Raw Data", raw_df)
     buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
 
 
@@ -314,10 +312,11 @@ with st.sidebar:
     st.caption(f"{len(selected_milestones)} of {len(ALL_GNAMES)} milestones selected.")
 
     st.markdown("---")
-    include_raw = st.checkbox("Include raw-data sheets in the download (All + Completed)", value=True)
-    st.caption("Adds two extra tabs with every column from the uploaded file: 'Raw Data - All' "
-               "(all rows currently in scope) and 'Raw Data - Completed' (just the completed subset). "
-               "Turn off for a smaller/faster file if you only need the summary.")
+    include_raw = st.checkbox("Include a raw-data sheet in the download", value=True)
+    st.caption("Adds one extra tab with every column from the uploaded file, matching whichever "
+                "'Shipments to include' scope is selected above — 'Raw Data - All' when All rows is "
+                "selected, or 'Raw Data - Completed' when Completed only is selected. "
+                "Turn off for a smaller/faster file if you only need the summary.")
 
     st.markdown("---")
     st.caption("Green ≥ 80%  ·  Yellow 50–79%  ·  Red < 50%")
@@ -382,11 +381,12 @@ if up is not None:
         st.dataframe(ov.style.format({"Completeness": "{:.1%}"}), use_container_width=True, hide_index=True)
 
         if include_raw:
-            df_completed_raw = df[_nonempty(df["SHIPMENT_COMPLETED_DT"])] if "SHIPMENT_COMPLETED_DT" in df.columns else df.iloc[0:0]
-            with st.spinner("Building workbook with raw-data sheets…"):
-                xlsx = build_full_workbook(overall, ent, fsub, N, pcols, gnames, df_all=df, df_completed=df_completed_raw)
-            st.caption(f"Workbook includes 'Raw Data - All' ({len(df):,} rows) and "
-                       f"'Raw Data - Completed' ({len(df_completed_raw):,} rows) tabs.")
+            # df already reflects the current scope (All rows / Completed only) + date filter,
+            # so the raw sheet name simply follows the scope selection — one sheet, not both.
+            raw_sheet_name = "Raw Data - Completed" if scope == "Completed only" else "Raw Data - All"
+            with st.spinner("Building workbook with raw-data sheet…"):
+                xlsx = build_full_workbook(overall, ent, fsub, N, pcols, gnames, raw_df=df, raw_sheet_name=raw_sheet_name)
+            st.caption(f"Workbook includes a '{raw_sheet_name}' tab ({len(df):,} rows).")
         else:
             xlsx = build_workbook(overall, ent, fsub, N, pcols, gnames)
 
