@@ -19,6 +19,20 @@ reused across different bookings over time, so CONTAINER_ID alone is never a
 reliable identity — the app surfaces a Booking+Container duplicate check (see
 the "Data quality check" panel) purely for visibility, it does not remove rows.
 
+Percentage methodology (read this if a manual check doesn't match): every
+percentage — including each FFW subtotal and the "Overall Completeness" row
+at the top — is a SHIPMENT-WEIGHTED average, i.e. (shipments where that
+milestone is present) / (shipments in that row's scope). It is NOT a plain
+average of the rows below it. Selecting a spreadsheet range that spans both
+the subtotal rows AND the individual entity rows above them (e.g. Excel's
+AVERAGE() over a whole block) will double-count and will not reproduce the
+top total — weight by each row's Shipment Count instead (SUMPRODUCT of
+count x percentage, divided by SUM of count) to verify by hand.
+
+Optionally includes two raw-data sheets in the download ("Raw Data - All" and
+"Raw Data - Completed") with every column from the uploaded file, for anyone
+who wants the underlying rows alongside the summary.
+
 Run locally:   streamlit run streamlit_app.py
 Deploy:        push this file + requirements.txt to GitHub, then deploy on
                https://share.streamlit.io  (main file path = streamlit_app.py)
@@ -155,6 +169,17 @@ def build_workbook(overall, ent, fsub, N, pcols, gnames) -> bytes:
         cc = ws.cell(r, i + 1, overall[g]); cc.number_format = "0%"
         cc.font = Font(name="Calibri", bold=True, color=YEL_T); cc.fill = PatternFill("solid", fgColor=YEL_F)
         cc.alignment = Alignment(horizontal="center"); cc.border = BORDER
+    r += 1
+
+    # Methodology note — prevents "why doesn't AVERAGE() of the rows below match this?" confusion
+    ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=NC)
+    note = ws.cell(r, 1, "Note: every % here is a shipment-weighted average (shipments with the milestone ÷ "
+                         "shipments in scope) — not a plain average of the subtotal/entity rows below. "
+                         "To verify a total by hand, weight each row by its Shipment Count "
+                         "(SUMPRODUCT(count, %) ÷ SUM(count)), don't AVERAGE() the % column directly.")
+    note.font = Font(name="Calibri", italic=True, size=9, color="7F7F7F")
+    note.alignment = Alignment(horizontal="left", wrap_text=True)
+    ws.row_dimensions[r].height = 28
     r += 2
 
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=NC)
@@ -209,6 +234,45 @@ def build_workbook(overall, ent, fsub, N, pcols, gnames) -> bytes:
     buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
 
 
+def add_raw_sheet(wb, name: str, data: pd.DataFrame):
+    """Append a plain raw-data sheet (header + every row/column, filterable) to wb."""
+    ws = wb.create_sheet(name)
+    cols = list(data.columns)
+    for j, col in enumerate(cols, start=1):
+        c = ws.cell(1, j, col)
+        c.font = Font(name="Calibri", bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor=BLUE)
+        c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+    for i, row in enumerate(data.itertuples(index=False, name=None), start=2):
+        for j, val in enumerate(row, start=1):
+            ws.cell(i, j, None if pd.isna(val) else val)
+    ws.freeze_panes = "A2"
+    if len(data):
+        ws.auto_filter.ref = f"A1:{get_column_letter(len(cols))}{len(data) + 1}"
+    sample = data.head(300)
+    for j, col in enumerate(cols, start=1):
+        maxlen = len(str(col))
+        for v in sample.iloc[:, j - 1]:
+            if pd.notna(v):
+                maxlen = max(maxlen, min(len(str(v)), 40))
+        ws.column_dimensions[get_column_letter(j)].width = max(10, min(maxlen + 2, 32))
+    return ws
+
+
+def build_full_workbook(overall, ent, fsub, N, pcols, gnames, df_all=None, df_completed=None) -> bytes:
+    """Build the Completeness Summary workbook, optionally appending raw-data sheets."""
+    summary_bytes = build_workbook(overall, ent, fsub, N, pcols, gnames)
+    if df_all is None and df_completed is None:
+        return summary_bytes
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(summary_bytes))
+    if df_all is not None:
+        add_raw_sheet(wb, "Raw Data - All", df_all)
+    if df_completed is not None:
+        add_raw_sheet(wb, "Raw Data - Completed", df_completed)
+    buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
+
+
 # ============================== UI ==============================
 st.set_page_config(page_title="OD2D Milestone Completeness", layout="wide")
 st.title("OD2D Milestone Completeness Builder")
@@ -248,6 +312,12 @@ with st.sidebar:
         label_visibility="collapsed",
     )
     st.caption(f"{len(selected_milestones)} of {len(ALL_GNAMES)} milestones selected.")
+
+    st.markdown("---")
+    include_raw = st.checkbox("Include raw-data sheets in the download (All + Completed)", value=True)
+    st.caption("Adds two extra tabs with every column from the uploaded file: 'Raw Data - All' "
+               "(all rows currently in scope) and 'Raw Data - Completed' (just the completed subset). "
+               "Turn off for a smaller/faster file if you only need the summary.")
 
     st.markdown("---")
     st.caption("Green ≥ 80%  ·  Yellow 50–79%  ·  Red < 50%")
@@ -311,7 +381,15 @@ if up is not None:
         ov = pd.DataFrame({"Milestone": gnames, "Completeness": [overall[g] for g in gnames]})
         st.dataframe(ov.style.format({"Completeness": "{:.1%}"}), use_container_width=True, hide_index=True)
 
-        xlsx = build_workbook(overall, ent, fsub, N, pcols, gnames)
+        if include_raw:
+            df_completed_raw = df[_nonempty(df["SHIPMENT_COMPLETED_DT"])] if "SHIPMENT_COMPLETED_DT" in df.columns else df.iloc[0:0]
+            with st.spinner("Building workbook with raw-data sheets…"):
+                xlsx = build_full_workbook(overall, ent, fsub, N, pcols, gnames, df_all=df, df_completed=df_completed_raw)
+            st.caption(f"Workbook includes 'Raw Data - All' ({len(df):,} rows) and "
+                       f"'Raw Data - Completed' ({len(df_completed_raw):,} rows) tabs.")
+        else:
+            xlsx = build_workbook(overall, ent, fsub, N, pcols, gnames)
+
         st.download_button("⬇️  Download completeness workbook (.xlsx)", data=xlsx,
                            file_name="OD2D_Completeness_By_Milestone.xlsx",
                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
