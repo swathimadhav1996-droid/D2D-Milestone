@@ -33,7 +33,10 @@ count x percentage, divided by SUM of count) to verify by hand.
 Optionally includes ONE raw-data sheet in the download, with every column from
 the uploaded file, matching whichever "Shipments to include" scope is
 selected — "Raw Data - All", "Raw Data - Completed", or "Raw Data - Not Yet
-Completed". Only ever one sheet, never more than one at once.
+Completed". Only ever one sheet, never more than one at once. If the uploaded
+file has them, SERVICE_TYPE, EST_DEPARTURE_ORIGIN_PORT, and
+EST_ARRIVAL_DESTINATION_PORT are shown with friendly headers ("Service Type",
+"Est. Departure from Origin Port", "Est. Arrival at Destination Port").
 
 Run locally:   streamlit run streamlit_app.py
 Deploy:        push this file + requirements.txt to GitHub, then deploy on
@@ -86,6 +89,14 @@ ALL_GNAMES = [g for g, _, _ in ALL_GROUPS]
 MILESTONE_CATEGORY = {g: cat for g, _, cat in ALL_GROUPS}
 
 FFW_COL, NVOCC_COL, CARRIER_COL = "MASTER_FFW_NAME", "MASTER_NVOCC_NAME", "MASTER_CARRIER_NAME"
+
+# Friendly header labels for the raw-data sheet. Only applied when the column is
+# actually present in the uploaded file — everything else keeps its original name.
+RAW_COLUMN_LABELS = {
+    "SERVICE_TYPE": "Service Type",
+    "EST_DEPARTURE_ORIGIN_PORT": "Est. Departure from Origin Port",
+    "EST_ARRIVAL_DESTINATION_PORT": "Est. Arrival at Destination Port",
+}
 
 # colours (match the reference workbook)
 NAVY, BLUE, F_LBL, F_CNT = "1F4E79", "2E75B6", "D6E4F7", "D9E1F2"
@@ -241,7 +252,7 @@ def add_raw_sheet(wb, name: str, data: pd.DataFrame):
     ws = wb.create_sheet(name)
     cols = list(data.columns)
     for j, col in enumerate(cols, start=1):
-        c = ws.cell(1, j, col)
+        c = ws.cell(1, j, RAW_COLUMN_LABELS.get(col, col))
         c.font = Font(name="Calibri", bold=True, color="FFFFFF")
         c.fill = PatternFill("solid", fgColor=BLUE)
         c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -253,7 +264,7 @@ def add_raw_sheet(wb, name: str, data: pd.DataFrame):
         ws.auto_filter.ref = f"A1:{get_column_letter(len(cols))}{len(data) + 1}"
     sample = data.head(300)
     for j, col in enumerate(cols, start=1):
-        maxlen = len(str(col))
+        maxlen = len(str(RAW_COLUMN_LABELS.get(col, col)))
         for v in sample.iloc[:, j - 1]:
             if pd.notna(v):
                 maxlen = max(maxlen, min(len(str(v)), 40))
@@ -317,6 +328,8 @@ with st.sidebar:
     st.caption("Adds one extra tab with every column from the uploaded file, matching whichever "
                 "'Shipments to include' scope is selected above — 'Raw Data - All', 'Raw Data - "
                 "Completed', or 'Raw Data - Not Yet Completed'. Only ever one sheet, never more. "
+                "Service Type, Est. Departure from Origin Port, and Est. Arrival at Destination "
+                "Port appear with friendly headers when present in the upload. "
                 "Turn off for a smaller/faster file if you only need the summary.")
 
     st.markdown("---")
