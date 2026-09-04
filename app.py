@@ -36,7 +36,12 @@ selected — "Raw Data - All", "Raw Data - Completed", or "Raw Data - Not Yet
 Completed". Only ever one sheet, never more than one at once. If the uploaded
 file has them, SERVICE_TYPE, EST_DEPARTURE_ORIGIN_PORT, and
 EST_ARRIVAL_DESTINATION_PORT are shown with friendly headers ("Service Type",
-"Est. Departure from Origin Port", "Est. Arrival at Destination Port").
+"Est. Departure from Origin Port", "Est. Arrival at Destination Port"), and
+so are the PLAN_INITIAL_*/PLAN_LAST_* columns for the 15 milestones that have
+them (e.g. "Gate In Full At POL - Initial Planned" / "... - Last Predicted") —
+Initial = first plan ever set, Last Predicted = the most recent estimate
+before the actual timestamp came in. See RAW_COLUMN_LABELS below for the
+full list.
 
 Run locally:   streamlit run streamlit_app.py
 Deploy:        push this file + requirements.txt to GitHub, then deploy on
@@ -96,6 +101,39 @@ RAW_COLUMN_LABELS = {
     "SERVICE_TYPE": "Service Type",
     "EST_DEPARTURE_ORIGIN_PORT": "Est. Departure from Origin Port",
     "EST_ARRIVAL_DESTINATION_PORT": "Est. Arrival at Destination Port",
+
+    # Planned / predicted timestamps per milestone (from the OD2D_shipment_level.sql
+    # PLAN_INITIAL_*/PLAN_LAST_* columns). Initial = first plan ever set. Last =
+    # most recent prediction/estimate before the actual came in. Only the 15
+    # milestones with a verified source get these — see the SQL file's header note.
+    "PLAN_INITIAL_GATE_OUT_EMPTY_AT_TERMINAL":       "Gate Out Empty At Terminal - Initial Planned",
+    "PLAN_LAST_GATE_OUT_EMPTY_AT_TERMINAL":          "Gate Out Empty At Terminal - Last Predicted",
+    "PLAN_INITIAL_PICKED_UP_AT_ORIGIN":              "Picked Up At Origin - Initial Planned",
+    "PLAN_LAST_PICKED_UP_AT_ORIGIN":                 "Picked Up At Origin - Last Predicted",
+    "PLAN_INITIAL_GATE_IN_FULL_POL":                 "Gate In Full At POL - Initial Planned",
+    "PLAN_LAST_GATE_IN_FULL_POL":                    "Gate In Full At POL - Last Predicted",
+    "PLAN_INITIAL_LOAD_ONTO_VESSEL_POL":             "Load Onto Vessel At POL - Initial Planned",
+    "PLAN_LAST_LOAD_ONTO_VESSEL_POL":                "Load Onto Vessel At POL - Last Predicted",
+    "PLAN_INITIAL_VESSEL_DEPARTURE_POL":             "Vessel Departure At POL - Initial Planned",
+    "PLAN_INITIAL_VESSEL_ARRIVAL_TSP":               "Vessel Arrival At TSP - Initial Planned",
+    "PLAN_LAST_VESSEL_ARRIVAL_TSP":                  "Vessel Arrival At TSP - Last Predicted",
+    "PLAN_INITIAL_DISCHARGE_FROM_VESSEL_TSP":        "Discharge From Vessel At TSP - Initial Planned",
+    "PLAN_LAST_DISCHARGE_FROM_VESSEL_TSP":           "Discharge From Vessel At TSP - Last Predicted",
+    "PLAN_INITIAL_LOAD_ONTO_VESSEL_TSP":             "Load Onto Vessel At TSP - Initial Planned",
+    "PLAN_LAST_LOAD_ONTO_VESSEL_TSP":                "Load Onto Vessel At TSP - Last Predicted",
+    "PLAN_INITIAL_VESSEL_DEPARTURE_TSP":             "Vessel Departure From TSP - Initial Planned",
+    "PLAN_LAST_VESSEL_DEPARTURE_TSP":                "Vessel Departure From TSP - Last Predicted",
+    "PLAN_INITIAL_VESSEL_ARRIVAL_POD":               "Vessel Arrival At POD - Initial Planned",
+    "PLAN_INITIAL_DISCHARGE_FROM_VESSEL_POD":        "Discharge From Vessel At POD - Initial Planned",
+    "PLAN_LAST_DISCHARGE_FROM_VESSEL_POD":           "Discharge From Vessel At POD - Last Predicted",
+    "PLAN_INITIAL_GATE_OUT_FULL_POD":                "Gate Out Full At POD - Initial Planned",
+    "PLAN_LAST_GATE_OUT_FULL_POD":                   "Gate Out Full At POD - Last Predicted",
+    "PLAN_INITIAL_ARRIVAL_INLAND_IMPORT_TERMINAL":   "Arrival At Inland Import Terminal - Initial Planned",
+    "PLAN_LAST_ARRIVAL_INLAND_IMPORT_TERMINAL":      "Arrival At Inland Import Terminal - Last Predicted",
+    "PLAN_INITIAL_PROOF_OF_DELIVERY":                "Proof Of Delivery - Initial Planned",
+    "PLAN_LAST_PROOF_OF_DELIVERY":                   "Proof Of Delivery - Last Predicted",
+    "PLAN_INITIAL_GATE_IN_EMPTY_AT_TERMINAL":        "Gate In Empty At Terminal - Initial Planned",
+    "PLAN_LAST_GATE_IN_EMPTY_AT_TERMINAL":           "Gate In Empty At Terminal - Last Predicted",
 }
 
 # colours (match the reference workbook)
@@ -328,8 +366,9 @@ with st.sidebar:
     st.caption("Adds one extra tab with every column from the uploaded file, matching whichever "
                 "'Shipments to include' scope is selected above — 'Raw Data - All', 'Raw Data - "
                 "Completed', or 'Raw Data - Not Yet Completed'. Only ever one sheet, never more. "
-                "Service Type, Est. Departure from Origin Port, and Est. Arrival at Destination "
-                "Port appear with friendly headers when present in the upload. "
+                "Service Type, Est. Departure from Origin Port, Est. Arrival at Destination "
+                "Port, and each milestone's Initial Planned / Last Predicted dates appear with "
+                "friendly headers when present in the upload. "
                 "Turn off for a smaller/faster file if you only need the summary.")
 
     st.markdown("---")
