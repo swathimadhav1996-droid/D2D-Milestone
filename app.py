@@ -34,14 +34,17 @@ Optionally includes ONE raw-data sheet in the download, with every column from
 the uploaded file, matching whichever "Shipments to include" scope is
 selected — "Raw Data - All", "Raw Data - Completed", or "Raw Data - Not Yet
 Completed". Only ever one sheet, never more than one at once. If the uploaded
-file has them, SERVICE_TYPE, EST_DEPARTURE_ORIGIN_PORT, and
-EST_ARRIVAL_DESTINATION_PORT are shown with friendly headers ("Service Type",
-"Vessel Departure At POL - Latest Planned", "Vessel Arrival At POD - Latest
-Planned"), and so are the PLAN_LAST_* columns for the 15 milestones that have
-them (e.g. "Gate In Full At POL - Latest Planned") — Latest Planned = the most
-recent estimate before the actual timestamp came in. The old PLAN_INITIAL_*
-("first plan ever set") columns are dropped entirely from this sheet — see
-EXCLUDE_RAW_COLUMNS / RAW_COLUMN_LABELS below for the full list.
+file has them, every TS_* actual milestone timestamp is shown as "<Milestone> -
+Actual", and every PLAN_LAST_*/EST_* column as "<Milestone> - Latest Planned"
+(most recent carrier plan/estimate before the actual came in). POD arrival also
+gets project44's own predictive-ETA model output, labeled "<Milestone> - P44
+ETA (Latest)" to keep it distinct from the carrier-schedule "Latest Planned"
+value. SERVICE_TYPE is shown as "Service Type". The old PLAN_INITIAL_* ("first
+plan ever set") columns are dropped entirely from this sheet. Columns are also
+reordered into door-to-door journey order — each milestone's Actual column is
+immediately followed by its Latest Planned / P44 ETA column(s) — instead of the
+upload's original column order. See EXCLUDE_RAW_COLUMNS / RAW_MILESTONE_ORDER /
+RAW_COLUMN_LABELS below for the full list and exact ordering.
 
 Run locally:   streamlit run streamlit_app.py
 Deploy:        push this file + requirements.txt to GitHub, then deploy on
@@ -117,35 +120,91 @@ EXCLUDE_RAW_COLUMNS = {
     "PLAN_INITIAL_GATE_IN_EMPTY_AT_TERMINAL",
 }
 
-# Friendly header labels for the raw-data sheet. Only applied when the column is
-# actually present in the uploaded file — everything else keeps its original name.
-# "Latest Planned" = the most recent plan/estimate/prediction for that milestone
-# before the actual timestamp came in (was called "Last Predicted" previously;
-# renamed for consistency).
-RAW_COLUMN_LABELS = {
-    "SERVICE_TYPE": "Service Type",
-    # These two were historically separate columns (added before the
-    # PLAN_LAST_* naming pattern existed below), which is why "Vessel Departure
-    # At POL" / "Vessel Arrival At POD" don't have their own PLAN_LAST_* column —
-    # their "latest planned" value lives here instead. Relabeled to match the
-    # same "<Milestone> - Latest Planned" pattern as every other milestone.
-    "EST_DEPARTURE_ORIGIN_PORT": "Vessel Departure At POL - Latest Planned",
-    "EST_ARRIVAL_DESTINATION_PORT": "Vessel Arrival At POD - Latest Planned",
+# ---------------------------------------------------------------------------
+# Raw-data sheet: master milestone list, in door-to-door JOURNEY ORDER (matches
+# the MILESTONE enum order in the SQL's TS_* SELECT block / the 29 OD2D
+# milestones end to end). Each entry is:
+#   (display name, actual TS_* column, [latest-planned column(s), in order])
+#
+# "Latest Planned" columns are normally PLAN_LAST_* (carrier-schedule based).
+# Two exceptions, both tied to a specific milestone below instead of having
+# their own PLAN_LAST_* column:
+#   - POL departure's latest-planned value is EST_DEPARTURE_ORIGIN_PORT
+#   - POD arrival's latest-planned value is EST_ARRIVAL_DESTINATION_PORT, and
+#     POD arrival ALSO gets P44_LAST_PREDICTED_ARRIVAL_POD — project44's own
+#     predictive-ETA model output (distinct from the carrier schedule) —
+#     labeled "P44 ETA (Latest)" below to avoid the "Last Predicted" wording.
+# ---------------------------------------------------------------------------
+RAW_MILESTONE_ORDER = [
+    ("Gate Out Empty Container At Terminal",                        "TS_GATE_OUT_EMPTY_AT_TERMINAL",       ["PLAN_LAST_GATE_OUT_EMPTY_AT_TERMINAL"]),
+    ("Arrival Of Empty Container At Origin",                        "TS_EMPTY_ARRIVAL_AT_ORIGIN",          []),
+    ("Picked Up At Origin",                                         "TS_PICKED_UP_AT_ORIGIN",              ["PLAN_LAST_PICKED_UP_AT_ORIGIN"]),
+    ("Arrival At Origin CFS/Warehouse",                             "TS_ARRIVAL_ORIGIN_CFS_OR_WH",         []),
+    ("Load At Origin CFS/Warehouse",                                "TS_LOAD_ORIGIN_CFS_OR_WH",            []),
+    ("Arrival At Inland Export Terminal",                           "TS_ARRIVAL_INLAND_EXPORT_TERMINAL",   []),
+    ("Discharge At Inland Export Terminal",                         "TS_DISCHARGE_INLAND_EXPORT_TERMINAL", []),
+    ("Load At Inland Export Terminal",                              "TS_LOAD_INLAND_EXPORT_TERMINAL",      []),
+    ("Departure From Inland Export Terminal",                       "TS_DEPARTURE_INLAND_EXPORT_TERMINAL", []),
+    ("Gate In Full At POL",                                         "TS_GATE_IN_FULL_POL",                 ["PLAN_LAST_GATE_IN_FULL_POL"]),
+    ("Load Onto Vessel At POL",                                     "TS_LOAD_ONTO_VESSEL_POL",             ["PLAN_LAST_LOAD_ONTO_VESSEL_POL"]),
+    ("Vessel Departure From POL",                                   "TS_VESSEL_DEPARTURE_POL",             ["EST_DEPARTURE_ORIGIN_PORT"]),
+    ("Vessel Arrival At TSP",                                       "TS_VESSEL_ARRIVAL_TSP",               ["PLAN_LAST_VESSEL_ARRIVAL_TSP"]),
+    ("Discharge From Vessel At TSP",                                "TS_DISCHARGE_FROM_VESSEL_TSP",        ["PLAN_LAST_DISCHARGE_FROM_VESSEL_TSP"]),
+    ("Load Onto Vessel At TSP",                                     "TS_LOAD_ONTO_VESSEL_TSP",             ["PLAN_LAST_LOAD_ONTO_VESSEL_TSP"]),
+    ("Vessel Departure From TSP",                                   "TS_VESSEL_DEPARTURE_TSP",             ["PLAN_LAST_VESSEL_DEPARTURE_TSP"]),
+    ("Vessel Arrival At POD",                                       "TS_VESSEL_ARRIVAL_POD",               ["EST_ARRIVAL_DESTINATION_PORT", "P44_LAST_PREDICTED_ARRIVAL_POD"]),
+    ("Discharge From Vessel At POD",                                "TS_DISCHARGE_FROM_VESSEL_POD",        ["PLAN_LAST_DISCHARGE_FROM_VESSEL_POD"]),
+    ("Gate Out Full At POD",                                        "TS_GATE_OUT_FULL_POD",                ["PLAN_LAST_GATE_OUT_FULL_POD"]),
+    ("Arrival Of Full Container On Rail At Inland Import Terminal", "TS_ARRIVAL_RAIL_INLAND_IMPORT",       []),
+    ("Arrival At Inland Import Terminal",                           "TS_ARRIVAL_INLAND_IMPORT_TERMINAL",   ["PLAN_LAST_ARRIVAL_INLAND_IMPORT_TERMINAL"]),
+    ("Discharge At Inland Import Terminal",                         "TS_DISCHARGE_INLAND_IMPORT_TERMINAL", []),
+    ("Load At Inland Import Terminal",                              "TS_LOAD_INLAND_IMPORT_TERMINAL",      []),
+    ("Departure From Inland Import Terminal",                       "TS_DEPARTURE_INLAND_IMPORT_TERMINAL", []),
+    ("Out For Delivery",                                            "TS_OUT_FOR_DELIVERY",                 []),
+    ("Arrival Of Full Container At Consignee",                      "TS_ARRIVAL_AT_CONSIGNEE",              []),
+    ("Proof Of Delivery",                                           "TS_PROOF_OF_DELIVERY",                 ["PLAN_LAST_PROOF_OF_DELIVERY"]),
+    ("Picked Up Empty Container From Consignee",                    "TS_EMPTY_PICKUP_FROM_CONSIGNEE",       []),
+    ("Gate In Empty Container At Terminal",                         "TS_GATE_IN_EMPTY_AT_TERMINAL",         ["PLAN_LAST_GATE_IN_EMPTY_AT_TERMINAL"]),
+]
 
-    "PLAN_LAST_GATE_OUT_EMPTY_AT_TERMINAL":          "Gate Out Empty At Terminal - Latest Planned",
-    "PLAN_LAST_PICKED_UP_AT_ORIGIN":                 "Picked Up At Origin - Latest Planned",
-    "PLAN_LAST_GATE_IN_FULL_POL":                    "Gate In Full At POL - Latest Planned",
-    "PLAN_LAST_LOAD_ONTO_VESSEL_POL":                "Load Onto Vessel At POL - Latest Planned",
-    "PLAN_LAST_VESSEL_ARRIVAL_TSP":                  "Vessel Arrival At TSP - Latest Planned",
-    "PLAN_LAST_DISCHARGE_FROM_VESSEL_TSP":           "Discharge From Vessel At TSP - Latest Planned",
-    "PLAN_LAST_LOAD_ONTO_VESSEL_TSP":                "Load Onto Vessel At TSP - Latest Planned",
-    "PLAN_LAST_VESSEL_DEPARTURE_TSP":                "Vessel Departure From TSP - Latest Planned",
-    "PLAN_LAST_DISCHARGE_FROM_VESSEL_POD":           "Discharge From Vessel At POD - Latest Planned",
-    "PLAN_LAST_GATE_OUT_FULL_POD":                   "Gate Out Full At POD - Latest Planned",
-    "PLAN_LAST_ARRIVAL_INLAND_IMPORT_TERMINAL":      "Arrival At Inland Import Terminal - Latest Planned",
-    "PLAN_LAST_PROOF_OF_DELIVERY":                   "Proof Of Delivery - Latest Planned",
-    "PLAN_LAST_GATE_IN_EMPTY_AT_TERMINAL":           "Gate In Empty At Terminal - Latest Planned",
-}
+# Friendly header labels for the raw-data sheet, built from RAW_MILESTONE_ORDER.
+# Only applied when the column is actually present in the uploaded file —
+# everything else keeps its original name.
+#   "<Milestone> - Actual"          = every TS_* actual milestone timestamp
+#   "<Milestone> - Latest Planned"  = most recent carrier plan/estimate before
+#                                     the actual (was "Last Predicted"; renamed)
+#   "<Milestone> - P44 ETA (Latest)"= project44's own predictive-ETA model
+#                                     output (POD arrival only) — kept separate
+#                                     from "Latest Planned" wording on purpose
+RAW_COLUMN_LABELS = {"SERVICE_TYPE": "Service Type"}
+for _display, _ts_col, _planned_cols in RAW_MILESTONE_ORDER:
+    RAW_COLUMN_LABELS[_ts_col] = f"{_display} - Actual"
+    for _pcol in _planned_cols:
+        if _pcol == "P44_LAST_PREDICTED_ARRIVAL_POD":
+            RAW_COLUMN_LABELS[_pcol] = f"{_display} - P44 ETA (Latest)"
+        else:
+            RAW_COLUMN_LABELS[_pcol] = f"{_display} - Latest Planned"
+
+# All columns referenced above (Actual + Latest Planned / P44 ETA), used to pull
+# them out of their original CSV position and re-insert them in journey order.
+_MILESTONE_RELATED_COLS = {c for _, ts_col, planned in RAW_MILESTONE_ORDER for c in [ts_col, *planned]}
+
+
+def _ordered_raw_columns(data_columns):
+    """Reorder raw-sheet columns: everything NOT milestone-related keeps its
+    original (CSV) order and comes first; then each milestone's Actual column
+    is followed immediately by its Latest Planned / P44 ETA column(s), walked
+    in door-to-door journey order. Columns missing from the upload are skipped."""
+    present = set(data_columns)
+    head = [c for c in data_columns if c not in _MILESTONE_RELATED_COLS]
+    body = []
+    for _, ts_col, planned_cols in RAW_MILESTONE_ORDER:
+        if ts_col in present:
+            body.append(ts_col)
+        for pcol in planned_cols:
+            if pcol in present:
+                body.append(pcol)
+    return head + body
 
 # colours (match the reference workbook)
 NAVY, BLUE, F_LBL, F_CNT = "1F4E79", "2E75B6", "D6E4F7", "D9E1F2"
@@ -300,9 +359,12 @@ def add_raw_sheet(wb, name: str, data: pd.DataFrame):
     """Append a plain raw-data sheet (header + every row/column, filterable) to wb.
 
     Drops EXCLUDE_RAW_COLUMNS (the "Initial Planned" milestone columns) entirely
-    before writing — only "Latest Planned" is kept per milestone.
+    before writing — only "Latest Planned" is kept per milestone — then reorders
+    the remaining columns into door-to-door journey order (see
+    _ordered_raw_columns / RAW_MILESTONE_ORDER).
     """
     data = data.drop(columns=[c for c in EXCLUDE_RAW_COLUMNS if c in data.columns])
+    data = data[_ordered_raw_columns(list(data.columns))]
     ws = wb.create_sheet(name)
     cols = list(data.columns)
     for j, col in enumerate(cols, start=1):
@@ -382,9 +444,11 @@ with st.sidebar:
     st.caption("Adds one extra tab with every column from the uploaded file, matching whichever "
                 "'Shipments to include' scope is selected above — 'Raw Data - All', 'Raw Data - "
                 "Completed', or 'Raw Data - Not Yet Completed'. Only ever one sheet, never more. "
-                "Service Type and each milestone's Latest Planned date (the most recent "
-                "estimate before the actual) appear with friendly headers when present in the "
-                "upload. Initial Planned columns are left out entirely. "
+                "Service Type, each milestone's Actual timestamp, and its Latest Planned date "
+                "(the most recent carrier estimate before the actual) appear with friendly "
+                "headers, reordered into door-to-door journey order. POD arrival also shows "
+                "project44's own P44 ETA (Latest) prediction. Initial Planned columns are left "
+                "out entirely. "
                 "Turn off for a smaller/faster file if you only need the summary.")
 
     st.markdown("---")
