@@ -36,12 +36,12 @@ selected — "Raw Data - All", "Raw Data - Completed", or "Raw Data - Not Yet
 Completed". Only ever one sheet, never more than one at once. If the uploaded
 file has them, SERVICE_TYPE, EST_DEPARTURE_ORIGIN_PORT, and
 EST_ARRIVAL_DESTINATION_PORT are shown with friendly headers ("Service Type",
-"Est. Departure from Origin Port", "Est. Arrival at Destination Port"), and
-so are the PLAN_INITIAL_*/PLAN_LAST_* columns for the 15 milestones that have
-them (e.g. "Gate In Full At POL - Initial Planned" / "... - Last Predicted") —
-Initial = first plan ever set, Last Predicted = the most recent estimate
-before the actual timestamp came in. See RAW_COLUMN_LABELS below for the
-full list.
+"Vessel Departure At POL - Latest Planned", "Vessel Arrival At POD - Latest
+Planned"), and so are the PLAN_LAST_* columns for the 15 milestones that have
+them (e.g. "Gate In Full At POL - Latest Planned") — Latest Planned = the most
+recent estimate before the actual timestamp came in. The old PLAN_INITIAL_*
+("first plan ever set") columns are dropped entirely from this sheet — see
+EXCLUDE_RAW_COLUMNS / RAW_COLUMN_LABELS below for the full list.
 
 Run locally:   streamlit run streamlit_app.py
 Deploy:        push this file + requirements.txt to GitHub, then deploy on
@@ -95,45 +95,56 @@ MILESTONE_CATEGORY = {g: cat for g, _, cat in ALL_GROUPS}
 
 FFW_COL, NVOCC_COL, CARRIER_COL = "MASTER_FFW_NAME", "MASTER_NVOCC_NAME", "MASTER_CARRIER_NAME"
 
+# Columns dropped entirely from the raw-data sheet (removed from the output, not
+# just relabeled). Currently: every "Initial Planned" milestone timestamp — only
+# the "Latest Planned" (most recent estimate before the actual) is kept per
+# milestone, per explicit request.
+EXCLUDE_RAW_COLUMNS = {
+    "PLAN_INITIAL_GATE_OUT_EMPTY_AT_TERMINAL",
+    "PLAN_INITIAL_PICKED_UP_AT_ORIGIN",
+    "PLAN_INITIAL_GATE_IN_FULL_POL",
+    "PLAN_INITIAL_LOAD_ONTO_VESSEL_POL",
+    "PLAN_INITIAL_VESSEL_DEPARTURE_POL",
+    "PLAN_INITIAL_VESSEL_ARRIVAL_TSP",
+    "PLAN_INITIAL_DISCHARGE_FROM_VESSEL_TSP",
+    "PLAN_INITIAL_LOAD_ONTO_VESSEL_TSP",
+    "PLAN_INITIAL_VESSEL_DEPARTURE_TSP",
+    "PLAN_INITIAL_VESSEL_ARRIVAL_POD",
+    "PLAN_INITIAL_DISCHARGE_FROM_VESSEL_POD",
+    "PLAN_INITIAL_GATE_OUT_FULL_POD",
+    "PLAN_INITIAL_ARRIVAL_INLAND_IMPORT_TERMINAL",
+    "PLAN_INITIAL_PROOF_OF_DELIVERY",
+    "PLAN_INITIAL_GATE_IN_EMPTY_AT_TERMINAL",
+}
+
 # Friendly header labels for the raw-data sheet. Only applied when the column is
 # actually present in the uploaded file — everything else keeps its original name.
+# "Latest Planned" = the most recent plan/estimate/prediction for that milestone
+# before the actual timestamp came in (was called "Last Predicted" previously;
+# renamed for consistency).
 RAW_COLUMN_LABELS = {
     "SERVICE_TYPE": "Service Type",
-    "EST_DEPARTURE_ORIGIN_PORT": "Est. Departure from Origin Port",
-    "EST_ARRIVAL_DESTINATION_PORT": "Est. Arrival at Destination Port",
+    # These two were historically separate columns (added before the
+    # PLAN_LAST_* naming pattern existed below), which is why "Vessel Departure
+    # At POL" / "Vessel Arrival At POD" don't have their own PLAN_LAST_* column —
+    # their "latest planned" value lives here instead. Relabeled to match the
+    # same "<Milestone> - Latest Planned" pattern as every other milestone.
+    "EST_DEPARTURE_ORIGIN_PORT": "Vessel Departure At POL - Latest Planned",
+    "EST_ARRIVAL_DESTINATION_PORT": "Vessel Arrival At POD - Latest Planned",
 
-    # Planned / predicted timestamps per milestone (from the OD2D_shipment_level.sql
-    # PLAN_INITIAL_*/PLAN_LAST_* columns). Initial = first plan ever set. Last =
-    # most recent prediction/estimate before the actual came in. Only the 15
-    # milestones with a verified source get these — see the SQL file's header note.
-    "PLAN_INITIAL_GATE_OUT_EMPTY_AT_TERMINAL":       "Gate Out Empty At Terminal - Initial Planned",
-    "PLAN_LAST_GATE_OUT_EMPTY_AT_TERMINAL":          "Gate Out Empty At Terminal - Last Predicted",
-    "PLAN_INITIAL_PICKED_UP_AT_ORIGIN":              "Picked Up At Origin - Initial Planned",
-    "PLAN_LAST_PICKED_UP_AT_ORIGIN":                 "Picked Up At Origin - Last Predicted",
-    "PLAN_INITIAL_GATE_IN_FULL_POL":                 "Gate In Full At POL - Initial Planned",
-    "PLAN_LAST_GATE_IN_FULL_POL":                    "Gate In Full At POL - Last Predicted",
-    "PLAN_INITIAL_LOAD_ONTO_VESSEL_POL":             "Load Onto Vessel At POL - Initial Planned",
-    "PLAN_LAST_LOAD_ONTO_VESSEL_POL":                "Load Onto Vessel At POL - Last Predicted",
-    "PLAN_INITIAL_VESSEL_DEPARTURE_POL":             "Vessel Departure At POL - Initial Planned",
-    "PLAN_INITIAL_VESSEL_ARRIVAL_TSP":               "Vessel Arrival At TSP - Initial Planned",
-    "PLAN_LAST_VESSEL_ARRIVAL_TSP":                  "Vessel Arrival At TSP - Last Predicted",
-    "PLAN_INITIAL_DISCHARGE_FROM_VESSEL_TSP":        "Discharge From Vessel At TSP - Initial Planned",
-    "PLAN_LAST_DISCHARGE_FROM_VESSEL_TSP":           "Discharge From Vessel At TSP - Last Predicted",
-    "PLAN_INITIAL_LOAD_ONTO_VESSEL_TSP":             "Load Onto Vessel At TSP - Initial Planned",
-    "PLAN_LAST_LOAD_ONTO_VESSEL_TSP":                "Load Onto Vessel At TSP - Last Predicted",
-    "PLAN_INITIAL_VESSEL_DEPARTURE_TSP":             "Vessel Departure From TSP - Initial Planned",
-    "PLAN_LAST_VESSEL_DEPARTURE_TSP":                "Vessel Departure From TSP - Last Predicted",
-    "PLAN_INITIAL_VESSEL_ARRIVAL_POD":               "Vessel Arrival At POD - Initial Planned",
-    "PLAN_INITIAL_DISCHARGE_FROM_VESSEL_POD":        "Discharge From Vessel At POD - Initial Planned",
-    "PLAN_LAST_DISCHARGE_FROM_VESSEL_POD":           "Discharge From Vessel At POD - Last Predicted",
-    "PLAN_INITIAL_GATE_OUT_FULL_POD":                "Gate Out Full At POD - Initial Planned",
-    "PLAN_LAST_GATE_OUT_FULL_POD":                   "Gate Out Full At POD - Last Predicted",
-    "PLAN_INITIAL_ARRIVAL_INLAND_IMPORT_TERMINAL":   "Arrival At Inland Import Terminal - Initial Planned",
-    "PLAN_LAST_ARRIVAL_INLAND_IMPORT_TERMINAL":      "Arrival At Inland Import Terminal - Last Predicted",
-    "PLAN_INITIAL_PROOF_OF_DELIVERY":                "Proof Of Delivery - Initial Planned",
-    "PLAN_LAST_PROOF_OF_DELIVERY":                   "Proof Of Delivery - Last Predicted",
-    "PLAN_INITIAL_GATE_IN_EMPTY_AT_TERMINAL":        "Gate In Empty At Terminal - Initial Planned",
-    "PLAN_LAST_GATE_IN_EMPTY_AT_TERMINAL":           "Gate In Empty At Terminal - Last Predicted",
+    "PLAN_LAST_GATE_OUT_EMPTY_AT_TERMINAL":          "Gate Out Empty At Terminal - Latest Planned",
+    "PLAN_LAST_PICKED_UP_AT_ORIGIN":                 "Picked Up At Origin - Latest Planned",
+    "PLAN_LAST_GATE_IN_FULL_POL":                    "Gate In Full At POL - Latest Planned",
+    "PLAN_LAST_LOAD_ONTO_VESSEL_POL":                "Load Onto Vessel At POL - Latest Planned",
+    "PLAN_LAST_VESSEL_ARRIVAL_TSP":                  "Vessel Arrival At TSP - Latest Planned",
+    "PLAN_LAST_DISCHARGE_FROM_VESSEL_TSP":           "Discharge From Vessel At TSP - Latest Planned",
+    "PLAN_LAST_LOAD_ONTO_VESSEL_TSP":                "Load Onto Vessel At TSP - Latest Planned",
+    "PLAN_LAST_VESSEL_DEPARTURE_TSP":                "Vessel Departure From TSP - Latest Planned",
+    "PLAN_LAST_DISCHARGE_FROM_VESSEL_POD":           "Discharge From Vessel At POD - Latest Planned",
+    "PLAN_LAST_GATE_OUT_FULL_POD":                   "Gate Out Full At POD - Latest Planned",
+    "PLAN_LAST_ARRIVAL_INLAND_IMPORT_TERMINAL":      "Arrival At Inland Import Terminal - Latest Planned",
+    "PLAN_LAST_PROOF_OF_DELIVERY":                   "Proof Of Delivery - Latest Planned",
+    "PLAN_LAST_GATE_IN_EMPTY_AT_TERMINAL":           "Gate In Empty At Terminal - Latest Planned",
 }
 
 # colours (match the reference workbook)
@@ -286,7 +297,12 @@ def build_workbook(overall, ent, fsub, N, pcols, gnames) -> bytes:
 
 
 def add_raw_sheet(wb, name: str, data: pd.DataFrame):
-    """Append a plain raw-data sheet (header + every row/column, filterable) to wb."""
+    """Append a plain raw-data sheet (header + every row/column, filterable) to wb.
+
+    Drops EXCLUDE_RAW_COLUMNS (the "Initial Planned" milestone columns) entirely
+    before writing — only "Latest Planned" is kept per milestone.
+    """
+    data = data.drop(columns=[c for c in EXCLUDE_RAW_COLUMNS if c in data.columns])
     ws = wb.create_sheet(name)
     cols = list(data.columns)
     for j, col in enumerate(cols, start=1):
@@ -366,9 +382,9 @@ with st.sidebar:
     st.caption("Adds one extra tab with every column from the uploaded file, matching whichever "
                 "'Shipments to include' scope is selected above — 'Raw Data - All', 'Raw Data - "
                 "Completed', or 'Raw Data - Not Yet Completed'. Only ever one sheet, never more. "
-                "Service Type, Est. Departure from Origin Port, Est. Arrival at Destination "
-                "Port, and each milestone's Initial Planned / Last Predicted dates appear with "
-                "friendly headers when present in the upload. "
+                "Service Type and each milestone's Latest Planned date (the most recent "
+                "estimate before the actual) appear with friendly headers when present in the "
+                "upload. Initial Planned columns are left out entirely. "
                 "Turn off for a smaller/faster file if you only need the summary.")
 
     st.markdown("---")
