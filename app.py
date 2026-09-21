@@ -176,7 +176,13 @@ RAW_MILESTONE_ORDER = [
 #   "<Milestone> - P44 ETA (Latest)"= project44's own predictive-ETA model
 #                                     output (POD arrival only) — kept separate
 #                                     from "Latest Planned" wording on purpose
-RAW_COLUMN_LABELS = {"SERVICE_TYPE": "Service Type"}
+RAW_COLUMN_LABELS = {
+    "SERVICE_TYPE": "Service Type",
+    # Only populated for completed shipments: why the shipment closed —
+    # "Delivered" / "Timed Out" / "Cancelled" (NULL if not yet completed, or if
+    # no matching lifecycle event was found — see OD2D_shipment_level.sql).
+    "SUB_STATUS": "Sub Status",
+}
 for _display, _ts_col, _planned_cols in RAW_MILESTONE_ORDER:
     RAW_COLUMN_LABELS[_ts_col] = f"{_display} - Actual"
     for _pcol in _planned_cols:
