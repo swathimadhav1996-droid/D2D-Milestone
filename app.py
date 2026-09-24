@@ -178,9 +178,12 @@ RAW_MILESTONE_ORDER = [
 #                                     from "Latest Planned" wording on purpose
 RAW_COLUMN_LABELS = {
     "SERVICE_TYPE": "Service Type",
-    # Only populated for completed shipments: why the shipment closed —
-    # "Delivered" / "Timed Out" / "Cancelled" (NULL if not yet completed, or if
-    # no matching lifecycle event was found — see OD2D_shipment_level.sql).
+    # "Completed" or "In Transit" (see OD2D_shipment_level.sql header for why the
+    # fuller Movement-style taxonomy isn't derivable from this milestone dataset).
+    "MAIN_STATUS": "Main Status",
+    # Only populated when Main Status = "Completed": why the shipment closed —
+    # "Delivered" / "Timed Out" / "Terminated" / "Other" (NULL if not yet
+    # completed — see OD2D_shipment_level.sql).
     "SUB_STATUS": "Sub Status",
 }
 for _display, _ts_col, _planned_cols in RAW_MILESTONE_ORDER:
