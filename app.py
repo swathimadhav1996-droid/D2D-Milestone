@@ -178,6 +178,10 @@ RAW_MILESTONE_ORDER = [
 #                                     from "Latest Planned" wording on purpose
 RAW_COLUMN_LABELS = {
     "SERVICE_TYPE": "Service Type",
+    # "Door-to-Door" or "Port-to-Port" (RoRo and other port-to-port-only
+    # shipments, merged into the same extract — see OD2D_shipment_level.sql
+    # header for the UNION ALL design and why these are added as extra rows).
+    "TRACKING_MODE": "Tracking Mode",
     # "Completed" or "In Transit" (see OD2D_shipment_level.sql header for why the
     # fuller Movement-style taxonomy isn't derivable from this milestone dataset).
     "MAIN_STATUS": "Main Status",
