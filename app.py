@@ -178,9 +178,14 @@ RAW_MILESTONE_ORDER = [
 #                                     from "Latest Planned" wording on purpose
 RAW_COLUMN_LABELS = {
     "SERVICE_TYPE": "Service Type",
-    # "Door-to-Door" or "Port-to-Port" (RoRo and other port-to-port-only
-    # shipments, merged into the same extract — see OD2D_shipment_level.sql
-    # header for the UNION ALL design and why these are added as extra rows).
+    # Tenant custom attribute "Load Type" — mostly "FCL" / "LCL", plus several
+    # RoRo spellings ("RoRo" / "RORO" / "RO-RO" / "Roro") and a handful of
+    # one-off values, passed through as-is (see OD2D_shipment_level.sql header).
+    "LOAD_TYPE": "Load Type",
+    # "Door-to-Door", "Port-to-Port", or "RoRo" (RoRo and other port-to-port-
+    # only shipments, merged into the same extract as extra rows — see
+    # OD2D_shipment_level.sql header for the UNION ALL design and the best-
+    # effort RoRo-vs-plain-Port-to-Port split).
     "TRACKING_MODE": "Tracking Mode",
     # "Completed" or "In Transit" (see OD2D_shipment_level.sql header for why the
     # fuller Movement-style taxonomy isn't derivable from this milestone dataset).
