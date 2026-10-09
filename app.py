@@ -194,7 +194,81 @@ RAW_COLUMN_LABELS = {
     # "Delivered" / "Timed Out" / "Terminated" / "Other" (NULL if not yet
     # completed — see OD2D_shipment_level.sql).
     "SUB_STATUS": "Sub Status",
+    # Reference keys (tenant custom shipment attributes, beyond Service Type /
+    # Load Type above) — consolidated at the end of the sheet by
+    # _ordered_raw_columns() below, matching the SQL's column order. Some are
+    # set at booking level (apply to every container under it), others per
+    # container — see REFERENCE KEYS section of OD2D_shipment_level.sql header.
+    "REFKEY_PORT_OF_DISCHARGE": "Ref Key - Port of Discharge",
+    "REFKEY_PORT_OF_LOAD": "Ref Key - Port of Load",
+    "REFKEY_DIVISION_OR_FLOW_IDENTIFIER": "Ref Key - Division or Flow Identifier",
+    "REFKEY_EST_DEPARTURE_FROM_ORIGIN_PORT": "Ref Key - Est. Departure from Origin Port",
+    "REFKEY_VESSEL_VOYAGE_1ST_LEG": "Ref Key - Vessel/Voyage 1st Leg",
+    "REFKEY_EST_ARRIVAL_AT_DESTINATION_PORT": "Ref Key - Est. Arrival at Destination Port",
+    "REFKEY_FREIGHT_FORWARDER": "Ref Key - Freight Forwarder",
+    "REFKEY_CARRIER_CUTOFF": "Ref Key - Carrier Cutoff",
+    "REFKEY_DOCUMENTATION_CUTOFF": "Ref Key - Documentation Cutoff",
+    "REFKEY_PLACE_OF_RECEIPT": "Ref Key - Place of Receipt",
+    "REFKEY_FFW_TRACKING_ID": "Ref Key - FFW Tracking ID",
+    "REFKEY_PLACE_OF_DELIVERY": "Ref Key - Place of Delivery",
+    "REFKEY_HAZARDOUS_FLAG": "Ref Key - Hazardous Flag",
+    "REFKEY_CONTAINER_TYPE": "Ref Key - Container Type",
+    "REFKEY_NVOCC": "Ref Key - NVOCC",
+    "REFKEY_SEAL_NUMBER": "Ref Key - Seal Number",
+    "REFKEY_TRANSHIPMENT_PORT": "Ref Key - Transhipment Port",
+    "REFKEY_EST_ARRIVAL_AT_TRANSSHIPMENT_PORT": "Ref Key - Est. Arrival at Transshipment Port",
+    "REFKEY_VESSEL_VOYAGE_2ND_LEG": "Ref Key - Vessel/Voyage 2nd Leg",
+    "REFKEY_SERIAL_NUMBER": "Ref Key - Serial Number",
+    "REFKEY_INCOTERM": "Ref Key - Incoterm",
+    "REFKEY_EXPORT_CUSTOMS_BROKER": "Ref Key - Export Customs Broker",
+    "REFKEY_IMPORT_CUSTOMS_BROKER": "Ref Key - Import Customs Broker",
+    "REFKEY_VOYAGE_2ND_LEG": "Ref Key - Voyage 2nd Leg",
+    "REFKEY_VESSEL_2ND_LEG": "Ref Key - Vessel 2nd Leg",
+    "REFKEY_TRANSPORT_MODE": "Ref Key - Transport Mode",
+    "REFKEY_EQUIPMENT_GROUP": "Ref Key - Equipment Group",
+    "REFKEY_BUSINESS": "Ref Key - Business",
+    "REFKEY_VIN": "Ref Key - VIN",
+    "REFKEY_EXTERNAL_SHIPMENT_IDENTIFIER": "Ref Key - External Shipment Identifier",
+    "REFKEY_CARRIER_CODE": "Ref Key - Carrier Code",
 }
+
+# Reference-key columns, in the same order as the SQL's SELECT list, so they
+# land consolidated at the very end of the raw sheet regardless of how pandas
+# happened to read the CSV's column order.
+_REFKEY_COLUMN_ORDER = [
+    "REFKEY_PORT_OF_DISCHARGE",
+    "REFKEY_PORT_OF_LOAD",
+    "REFKEY_DIVISION_OR_FLOW_IDENTIFIER",
+    "REFKEY_EST_DEPARTURE_FROM_ORIGIN_PORT",
+    "REFKEY_VESSEL_VOYAGE_1ST_LEG",
+    "REFKEY_EST_ARRIVAL_AT_DESTINATION_PORT",
+    "REFKEY_FREIGHT_FORWARDER",
+    "REFKEY_CARRIER_CUTOFF",
+    "REFKEY_DOCUMENTATION_CUTOFF",
+    "REFKEY_PLACE_OF_RECEIPT",
+    "REFKEY_FFW_TRACKING_ID",
+    "REFKEY_PLACE_OF_DELIVERY",
+    "REFKEY_HAZARDOUS_FLAG",
+    "REFKEY_CONTAINER_TYPE",
+    "REFKEY_NVOCC",
+    "REFKEY_SEAL_NUMBER",
+    "REFKEY_TRANSHIPMENT_PORT",
+    "REFKEY_EST_ARRIVAL_AT_TRANSSHIPMENT_PORT",
+    "REFKEY_VESSEL_VOYAGE_2ND_LEG",
+    "REFKEY_SERIAL_NUMBER",
+    "REFKEY_INCOTERM",
+    "REFKEY_EXPORT_CUSTOMS_BROKER",
+    "REFKEY_IMPORT_CUSTOMS_BROKER",
+    "REFKEY_VOYAGE_2ND_LEG",
+    "REFKEY_VESSEL_2ND_LEG",
+    "REFKEY_TRANSPORT_MODE",
+    "REFKEY_EQUIPMENT_GROUP",
+    "REFKEY_BUSINESS",
+    "REFKEY_VIN",
+    "REFKEY_EXTERNAL_SHIPMENT_IDENTIFIER",
+    "REFKEY_CARRIER_CODE",
+]
+_REFKEY_COLUMN_SET = set(_REFKEY_COLUMN_ORDER)
 for _display, _ts_col, _planned_cols in RAW_MILESTONE_ORDER:
     RAW_COLUMN_LABELS[_ts_col] = f"{_display} - Actual"
     for _pcol in _planned_cols:
@@ -209,12 +283,14 @@ _MILESTONE_RELATED_COLS = {c for _, ts_col, planned in RAW_MILESTONE_ORDER for c
 
 
 def _ordered_raw_columns(data_columns):
-    """Reorder raw-sheet columns: everything NOT milestone-related keeps its
-    original (CSV) order and comes first; then each milestone's Actual column
-    is followed immediately by its Latest Planned / P44 ETA column(s), walked
-    in door-to-door journey order. Columns missing from the upload are skipped."""
+    """Reorder raw-sheet columns: everything NOT milestone- or reference-key-
+    related keeps its original (CSV) order and comes first; then each
+    milestone's Actual column is followed immediately by its Latest Planned /
+    P44 ETA column(s), walked in door-to-door journey order; then every
+    Reference Key column is consolidated at the very end, per request.
+    Columns missing from the upload are skipped."""
     present = set(data_columns)
-    head = [c for c in data_columns if c not in _MILESTONE_RELATED_COLS]
+    head = [c for c in data_columns if c not in _MILESTONE_RELATED_COLS and c not in _REFKEY_COLUMN_SET]
     body = []
     for _, ts_col, planned_cols in RAW_MILESTONE_ORDER:
         if ts_col in present:
@@ -222,7 +298,8 @@ def _ordered_raw_columns(data_columns):
         for pcol in planned_cols:
             if pcol in present:
                 body.append(pcol)
-    return head + body
+    tail = [c for c in _REFKEY_COLUMN_ORDER if c in present]
+    return head + body + tail
 
 # colours (match the reference workbook)
 NAVY, BLUE, F_LBL, F_CNT = "1F4E79", "2E75B6", "D6E4F7", "D9E1F2"
